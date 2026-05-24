@@ -1,5 +1,5 @@
 import { HeadContent, Scripts, createRootRouteWithContext, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import styles from "../styles.css?url";
 import { type QueryClient } from "@tanstack/react-query";
 import { getUserServerFn } from "@/lib/auth.server";
@@ -171,6 +171,9 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const config = useClientConfig();
+  useEffect(() => {
+    document.documentElement.setAttribute("data-hydrated", "true");
+  }, []);
   return (
     <html lang="en">
       <head>

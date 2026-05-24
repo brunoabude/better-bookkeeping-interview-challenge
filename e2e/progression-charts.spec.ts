@@ -1,13 +1,11 @@
 import { test, expect, Page } from "@playwright/test";
-import { signInOrCreate } from "./shared";
+import { waitForHydration, signInOrCreate } from "./shared";
 
-const PROG_EMAIL = "e2e-progression@test.com";
 const PROG_PASSWORD = "password123";
-const PROG_NAME = "E2E Progression User";
 
 async function createCompletedWorkout(page: Page, movementName: string, weight: number, reps: number) {
   await page.goto("/movements");
-  await page.waitForLoadState("networkidle");
+  await waitForHydration(page);
   const existing = await page.locator("li").filter({ hasText: movementName }).count();
   if (existing === 0) {
     await page.getByPlaceholder("Movement name (e.g. Bench Press)").fill(movementName);
@@ -16,33 +14,28 @@ async function createCompletedWorkout(page: Page, movementName: string, weight: 
   }
 
   await page.goto("/current-workout");
-  await page.waitForLoadState("networkidle");
+  await waitForHydration(page);
 
-  // Complete any existing active workout first
   const completeBtn = page.getByRole("button", { name: "Complete Workout" });
   if (await completeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
     await completeBtn.click();
-    await page.waitForLoadState("networkidle");
+    await waitForHydration(page);
   }
 
   await page.getByRole("button", { name: "Start Workout" }).click();
-  await page.waitForLoadState("networkidle");
+  await waitForHydration(page);
 
   await page.getByRole("combobox").selectOption({ label: movementName });
   await page.locator('input[placeholder="Weight"]').fill(String(weight));
   await page.locator('input[placeholder="Reps"]').fill(String(reps));
   await page.getByRole("button", { name: "Add" }).click();
-  await page.waitForLoadState("networkidle");
+  await waitForHydration(page);
 
   await page.getByRole("button", { name: "Complete Workout" }).click();
-  await page.waitForLoadState("networkidle");
+  await waitForHydration(page);
 }
 
 test.describe("Progression Charts (US1) — chart renders", () => {
-  test.beforeEach(async ({ page }) => {
-    await signInOrCreate(page, PROG_EMAIL, PROG_PASSWORD, PROG_NAME);
-  });
-
   test("US1 happy path: chart renders with SVG after selecting movement", async ({ page }) => {
     const movementName = `Deadlift-${Date.now()}`;
 
@@ -50,12 +43,10 @@ test.describe("Progression Charts (US1) — chart renders", () => {
     await createCompletedWorkout(page, movementName, 110, 5);
 
     await page.goto("/workout-history");
-    await page.waitForLoadState("networkidle");
+    await waitForHydration(page);
 
-    // Select the movement in the Progression section dropdown
     await page.getByRole("combobox").last().selectOption({ label: movementName });
 
-    // Recharts SVG should be rendered
     await expect(page.locator(".recharts-responsive-container svg")).toBeVisible({ timeout: 10000 });
   });
 
@@ -64,7 +55,7 @@ test.describe("Progression Charts (US1) — chart renders", () => {
     await createCompletedWorkout(page, movementName, 80, 8);
 
     await page.goto("/workout-history");
-    await page.waitForLoadState("networkidle");
+    await waitForHydration(page);
 
     await page.getByRole("combobox").last().selectOption({ label: movementName });
     await expect(page.locator(".recharts-responsive-container svg")).toBeVisible({ timeout: 10000 });
@@ -75,17 +66,12 @@ test.describe("Progression Charts (US1) — chart renders", () => {
     await page.getByRole("button", { name: "Total Volume" }).click();
     await expect(page.locator(".recharts-responsive-container svg")).toBeVisible();
 
-    // Switch back to Max Weight
     await page.getByRole("button", { name: "Max Weight" }).click();
     await expect(page.locator(".recharts-responsive-container svg")).toBeVisible();
   });
 });
 
 test.describe("Progression Charts (US2) — selector independence", () => {
-  test.beforeEach(async ({ page }) => {
-    await signInOrCreate(page, PROG_EMAIL, PROG_PASSWORD, PROG_NAME);
-  });
-
   test("US2: changing metric preserves movement selection; changing movement preserves metric", async ({
     page,
   }) => {
@@ -95,27 +81,23 @@ test.describe("Progression Charts (US2) — selector independence", () => {
     await createCompletedWorkout(page, movement2, 70, 8);
 
     await page.goto("/workout-history");
-    await page.waitForLoadState("networkidle");
+    await waitForHydration(page);
 
     const select = page.getByRole("combobox").last();
 
-    // Select movement1 and switch metric to Total Reps
     await select.selectOption({ label: movement1 });
     await expect(page.locator(".recharts-responsive-container svg")).toBeVisible({ timeout: 10000 });
     await page.getByRole("button", { name: "Total Reps" }).click();
 
-    // Movement dropdown still shows movement1
     const movement1Id = await page.evaluate((name: string) => {
       const opts = Array.from(document.querySelectorAll("select option"));
       return (opts.find((o) => o.textContent?.trim() === name) as HTMLOptionElement | undefined)?.value ?? "";
     }, movement1);
     await expect(select).toHaveValue(movement1Id);
 
-    // Switch to movement2 — metric should stay on Total Reps
     await select.selectOption({ label: movement2 });
     await expect(page.locator(".recharts-responsive-container svg")).toBeVisible({ timeout: 10000 });
 
-    // Movement2 is selected now
     const movement2Id = await page.evaluate((name: string) => {
       const opts = Array.from(document.querySelectorAll("select option"));
       return (opts.find((o) => o.textContent?.trim() === name) as HTMLOptionElement | undefined)?.value ?? "";
@@ -125,30 +107,31 @@ test.describe("Progression Charts (US2) — selector independence", () => {
 });
 
 test.describe("Progression Charts (US3) — empty states", () => {
-  test("US3: fresh account with no completed workouts shows instructional text", async ({ page }) => {
-    await page.goto("/logout");
-    await page.waitForURL("/sign-in");
-    const freshEmail = `e2e-prog-fresh-${Date.now()}@test.com`;
-    await signInOrCreate(page, freshEmail, PROG_PASSWORD, "Progression Fresh User");
+  test.describe("fresh account", () => {
+    test.use({ storageState: undefined });
 
-    await page.goto("/workout-history");
-    await page.waitForLoadState("networkidle");
+    test("US3: fresh account with no completed workouts shows instructional text", async ({ page }) => {
+      await page.goto("/logout");
+      await page.waitForURL("/sign-in");
+      const freshEmail = `e2e-prog-fresh-${Date.now()}@test.com`;
+      await signInOrCreate(page, freshEmail, PROG_PASSWORD, "Progression Fresh User");
 
-    await expect(
-      page.getByText("Complete a workout to start tracking your progression."),
-    ).toBeVisible();
+      await page.goto("/workout-history");
+      await waitForHydration(page);
+
+      await expect(
+        page.getByText("Complete a workout to start tracking your progression."),
+      ).toBeVisible();
+    });
   });
 
   test("US3: with completed workouts but no movement selected shows selection prompt", async ({ page }) => {
-    await signInOrCreate(page, PROG_EMAIL, PROG_PASSWORD, PROG_NAME);
-
     const movementName = `SelPrompt-${Date.now()}`;
     await createCompletedWorkout(page, movementName, 60, 6);
 
     await page.goto("/workout-history");
-    await page.waitForLoadState("networkidle");
+    await waitForHydration(page);
 
-    // Progression section shows movement selector but no chart yet
     await expect(
       page.getByText("Select a movement above to see your progression chart."),
     ).toBeVisible();
