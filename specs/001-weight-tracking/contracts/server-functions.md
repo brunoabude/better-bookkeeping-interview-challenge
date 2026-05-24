@@ -18,7 +18,6 @@ All functions use `authMiddleware`. `context.user.id` is the authenticated user'
 Array<{
   id: string;
   weight: number;
-  unit: string;
   date: string; // ISO 8601 date string (UTC midnight)
 }>
 ```
@@ -46,7 +45,6 @@ Ordered by `date` ascending (oldest first) so the chart renders chronologically 
   entry: {
     id: string;
     weight: number;
-    unit: string;
     date: string; // ISO 8601
   };
 }
