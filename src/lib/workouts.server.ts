@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getServerSidePrismaClient } from "@/lib/db.server";
 import { authMiddleware } from "@/lib/auth.server";
 import { z } from "zod";
+import { Prisma } from "../../prisma/generated/client/client";
 
 export const createWorkoutServerFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -110,6 +111,30 @@ export const getWorkoutHistoryServerFn = createServerFn()
       },
     });
     return workouts;
+  });
+
+export const getMovementProgressionServerFn = createServerFn()
+  .middleware([authMiddleware])
+  .inputValidator(z.object({ movementId: z.string() }))
+  .handler(async ({ context, data }: { context: { user: { id: string } }; data: { movementId: string } }) => {
+    const prisma = await getServerSidePrismaClient();
+    const rows = await prisma.$queryRaw<
+      { date: string; maxWeight: number | null; totalVolume: number; totalReps: number }[]
+    >(Prisma.sql`
+      SELECT
+        TO_CHAR(DATE(w."completedAt"), 'YYYY-MM-DD') AS date,
+        MAX(s.weight)::int                           AS "maxWeight",
+        SUM(s.weight * s.reps)::int                  AS "totalVolume",
+        SUM(s.reps)::int                             AS "totalReps"
+      FROM "Set" s
+      JOIN "Workout" w ON s."workoutId" = w.id
+      WHERE s."movementId" = ${data.movementId}
+        AND w."userId"     = ${context.user.id}
+        AND w."completedAt" IS NOT NULL
+      GROUP BY DATE(w."completedAt")
+      ORDER BY date ASC
+    `);
+    return rows;
   });
 
 export const deleteWorkoutsServerFn = createServerFn({ method: "POST" })
