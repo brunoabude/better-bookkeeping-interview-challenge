@@ -1,12 +1,16 @@
 import { Page } from "@playwright/test";
 
-export const TEST_EMAIL = "e2e-bodyweight@test.com";
-export const TEST_PASSWORD = "password123";
-export const TEST_NAME = "E2E Bodyweight User";
+export const TEST_EMAIL = "e2e-test@better-bookkeeping.test";
+export const TEST_PASSWORD = process.env.E2E_TEST_PASSWORD ?? "password123";
+export const TEST_NAME = "E2E Test User";
 
-export async function signInOrCreate(page: Page, email: string, password: string, name: string) {
+export async function waitForHydration(page: Page): Promise<void> {
+  await page.locator("[data-hydrated='true']").waitFor({ state: "attached", timeout: 15_000 });
+}
+
+export async function signInOrCreate(page: Page, email: string, password: string, name: string): Promise<void> {
   await page.goto("/sign-in");
-  await page.waitForLoadState("networkidle");
+  await waitForHydration(page);
   await page.getByRole("textbox", { name: "Email" }).fill(email);
   await page.getByRole("textbox", { name: "Password" }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -18,7 +22,7 @@ export async function signInOrCreate(page: Page, email: string, password: string
 
   if (!loginSucceeded) {
     await page.goto("/create-account");
-    await page.waitForLoadState("networkidle");
+    await waitForHydration(page);
     await page.getByRole("textbox", { name: "Name" }).fill(name);
     await page.getByRole("textbox", { name: "Email" }).fill(email);
     await page.getByRole("textbox", { name: "Password" }).fill(password);
