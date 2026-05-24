@@ -21,7 +21,7 @@ description: "Task list for 001-weight-tracking implementation"
 
 **Purpose**: Install the chart library before any implementation begins.
 
-- [ ] T001 Install Recharts dependency by running `bun add recharts` in the project root
+- [X] T001 Install Recharts dependency by running `bun add recharts` in the project root
 
 ---
 
@@ -31,11 +31,11 @@ description: "Task list for 001-weight-tracking implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T002 Add `WeightEntry` model and `User.weightEntries` relation to `prisma/schema.prisma` per data-model.md (fields: id String PK uuid, userId String FK→User, weight Float, date DateTime, @@unique([userId, date]))
-- [ ] T003 Run `bunx prisma migrate dev --name add-weight-entry` to apply the migration and regenerate the Prisma client (depends on T002)
-- [ ] T004 [P] Create `src/lib/weight.server.ts` implementing three server functions — `getWeightEntriesServerFn` (GET, returns entries ordered by date asc), `upsertWeightEntryServerFn` (POST, upserts today's UTC-midnight date, Zod validates weight > 0 and ≤ 320), `deleteWeightEntryServerFn` (POST, verifies userId ownership before delete) — all using `authMiddleware` from `@/lib/auth.server`
-- [ ] T005 [P] Create `src/routes/__index/_layout.weight/-queries/weight.ts` exporting `weightEntriesQueryOptions` using `queryOptions` from TanStack Query, with queryKey `["weight-entries"]` and queryFn calling `getWeightEntriesServerFn()`
-- [ ] T006 Add a `{ to: "/weight", label: "Weight", icon: Scale }` entry to the `navItems` array in `src/routes/__index/_layout.tsx` (import `Scale` from `lucide-react`)
+- [X] T002 Add `WeightEntry` model and `User.weightEntries` relation to `prisma/schema.prisma` per data-model.md (fields: id String PK uuid, userId String FK→User, weight Float, date DateTime, @@unique([userId, date]))
+- [X] T003 Run `bunx prisma migrate dev --name add-weight-entry` to apply the migration and regenerate the Prisma client (depends on T002)
+- [X] T004 [P] Create `src/lib/weight.server.ts` implementing three server functions — `getWeightEntriesServerFn` (GET, returns entries ordered by date asc), `upsertWeightEntryServerFn` (POST, upserts today's UTC-midnight date, Zod validates weight > 0 and ≤ 320), `deleteWeightEntryServerFn` (POST, verifies userId ownership before delete) — all using `authMiddleware` from `@/lib/auth.server`
+- [X] T005 [P] Create `src/routes/__index/_layout.weight/-queries/weight.ts` exporting `weightEntriesQueryOptions` using `queryOptions` from TanStack Query, with queryKey `["weight-entries"]` and queryFn calling `getWeightEntriesServerFn()`
+- [X] T006 Add a `{ to: "/weight", label: "Weight", icon: Scale }` entry to the `navItems` array in `src/routes/__index/_layout.tsx` (import `Scale` from `lucide-react`)
 
 **Checkpoint**: Database schema is live, server functions exist, query options are wired, nav shows the Weight link. No UI page yet.
 
@@ -47,8 +47,8 @@ description: "Task list for 001-weight-tracking implementation"
 
 **Independent Test**: Navigate to `/weight` → submit `180` → entry appears in list with today's date → submit `185` → only one entry remains, updated to `185` → submit `-1` → validation error shown, nothing saved.
 
-- [ ] T007 [US1] Create `src/routes/__index/_layout.weight/index.tsx` with the route definition (`createFileRoute("/__index/_layout/weight/")`), a loader that calls `context.queryClient.ensureQueryData(weightEntriesQueryOptions())`, and a `WeightPage` component that uses `useSuspenseQuery(weightEntriesQueryOptions())` to fetch entries and renders them as a list in a `Card`; show an empty-state paragraph when no entries exist
-- [ ] T008 [US1] Add a weight entry form above the list in `src/routes/__index/_layout.weight/index.tsx` using `useForm` from `@tanstack/react-form` with a single numeric `weight` field; wire the form submit to `upsertWeightEntryServerFn` via `useMutation` (invalidate `weightEntriesQueryOptions().queryKey` on success); display inline validation errors for out-of-range or non-numeric values
+- [X] T007 [US1] Create `src/routes/__index/_layout.weight/index.tsx` with the route definition (`createFileRoute("/__index/_layout/weight/")`), a loader that calls `context.queryClient.ensureQueryData(weightEntriesQueryOptions())`, and a `WeightPage` component that uses `useSuspenseQuery(weightEntriesQueryOptions())` to fetch entries and renders them as a list in a `Card`; show an empty-state paragraph when no entries exist
+- [X] T008 [US1] Add a weight entry form above the list in `src/routes/__index/_layout.weight/index.tsx` using `useForm` from `@tanstack/react-form` with a single numeric `weight` field; wire the form submit to `upsertWeightEntryServerFn` via `useMutation` (invalidate `weightEntriesQueryOptions().queryKey` on success); display inline validation errors for out-of-range or non-numeric values
 
 **Checkpoint**: User Story 1 is fully functional. Navigate to `/weight`, log a weight, see it in the list, update it by submitting again.
 
@@ -60,7 +60,7 @@ description: "Task list for 001-weight-tracking implementation"
 
 **Independent Test**: Seed two entries with different dates (via Prisma Studio or direct DB insert) → chart shows two connected data points in chronological order → delete all entries → chart is hidden and empty state shows.
 
-- [ ] T009 [US2] Add a Recharts `LineChart` wrapped in `ResponsiveContainer` to `src/routes/__index/_layout.weight/index.tsx`: render it in a `Card` below the entries list only when `entries.length > 0`; use `<Line type="monotone" dataKey="weight" />`, `<XAxis dataKey="date" tickFormatter={(d) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" })} />`, `<YAxis domain={["auto", "auto"]} />`, and `<Tooltip />`; import from `recharts`
+- [X] T009 [US2] Add a Recharts `LineChart` wrapped in `ResponsiveContainer` to `src/routes/__index/_layout.weight/index.tsx`: render it in a `Card` below the entries list only when `entries.length > 0`; use `<Line type="monotone" dataKey="weight" />`, `<XAxis dataKey="date" tickFormatter={(d) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" })} />`, `<YAxis domain={["auto", "auto"]} />`, and `<Tooltip />`; import from `recharts`
 
 **Checkpoint**: User Stories 1 and 2 both work. Chart renders with entries and hides on empty state.
 
@@ -72,7 +72,7 @@ description: "Task list for 001-weight-tracking implementation"
 
 **Independent Test**: Log a weight → delete it → entry disappears from list → if no more entries, empty state and no chart → chart data point removed when other entries remain.
 
-- [ ] T010 [US3] Add a delete button (use `<Button variant="ghost" size="sm">` with `<Trash2 className="w-4 h-4" />` from `lucide-react`) to each entry row in the list in `src/routes/__index/_layout.weight/index.tsx`; wire it to `deleteWeightEntryServerFn` via `useMutation` (invalidate `weightEntriesQueryOptions().queryKey` on success)
+- [X] T010 [US3] Add a delete button (use `<Button variant="ghost" size="sm">` with `<Trash2 className="w-4 h-4" />` from `lucide-react`) to each entry row in the list in `src/routes/__index/_layout.weight/index.tsx`; wire it to `deleteWeightEntryServerFn` via `useMutation` (invalidate `weightEntriesQueryOptions().queryKey` on success)
 
 **Checkpoint**: All three user stories are independently functional and testable.
 
@@ -82,8 +82,8 @@ description: "Task list for 001-weight-tracking implementation"
 
 **Purpose**: E2E test coverage (required by constitution) and final validation.
 
-- [ ] T011 [P] Write Playwright e2e test in `e2e/weight.spec.ts` covering the happy path: sign in → navigate to Weight via sidebar → submit a weight value → verify entry appears in list → verify chart renders → delete the entry → verify removal and empty state
-- [ ] T012 Run all quickstart.md validation steps manually to confirm all acceptance scenarios from spec.md pass (FR-001 through FR-011)
+- [X] T011 [P] Write Playwright e2e test in `e2e/weight.spec.ts` covering the happy path: sign in → navigate to Weight via sidebar → submit a weight value → verify entry appears in list → verify chart renders → delete the entry → verify removal and empty state
+- [X] T012 Run all quickstart.md validation steps manually to confirm all acceptance scenarios from spec.md pass (FR-001 through FR-011)
 
 ---
 
