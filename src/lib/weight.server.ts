@@ -36,6 +36,19 @@ export const upsertWeightEntryServerFn = createServerFn({ method: "POST" })
     };
   });
 
+export const getLatestWeightServerFn = createServerFn()
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const prisma = await getServerSidePrismaClient();
+    const entry = await prisma.weightEntry.findFirst({
+      where: { userId: context.user.id },
+      orderBy: { date: "desc" },
+      select: { weight: true, date: true },
+    });
+    if (!entry) return null;
+    return { weight: entry.weight, date: entry.date.toISOString() };
+  });
+
 export const deleteWeightEntryServerFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(z.object({ id: z.number().int() }))

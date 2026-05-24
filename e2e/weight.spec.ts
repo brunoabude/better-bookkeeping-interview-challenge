@@ -1,36 +1,10 @@
 import { test, expect } from "@playwright/test";
+import { signInOrCreate, TEST_EMAIL, TEST_NAME, TEST_PASSWORD } from "./shared";
 
-const TEST_EMAIL = "e2e-weight@test.com";
-const TEST_PASSWORD = "password123";
-const TEST_NAME = "E2E Weight User";
 
 test.describe("Weight Tracking", () => {
   test.beforeEach(async ({ page }) => {
-// Try to sign in; if that fails, create an account first
-  await page.goto("/sign-in");
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("textbox", { name: "Email" }).fill(TEST_EMAIL);
-  await page.getByRole("textbox", { name: "Password" }).fill(TEST_PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-
-  // Sign-in uses an async fetch + client-side navigate, so page.url() is not
-  // reliable immediately after click. Wait for navigation instead.
-  const loginSucceeded = await page
-    .waitForURL("/current-workout", { timeout: 5000 })
-    .then(() => true)
-    .catch(() => false);
-
-  if (!loginSucceeded) {
-    await page.goto("/create-account");
-    await page.waitForLoadState("networkidle");
-
-    await page.getByRole("textbox", { name: "Name" }).fill(TEST_NAME);
-    await page.getByRole("textbox", { name: "Email" }).fill(TEST_EMAIL);
-    await page.getByRole("textbox", { name: "Password" }).fill(TEST_PASSWORD);
-    await page.getByRole("button", { name: "Create account" }).click();
-  }
-
-  await page.waitForURL(/(current-workout|weight|workout-history|movements)/);
+    await signInOrCreate(page, TEST_EMAIL, TEST_PASSWORD, TEST_NAME);
   });
 
   test("happy path: log weight, view chart, delete entry", async ({ page }) => {
