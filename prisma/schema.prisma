@@ -8,13 +8,24 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(uuid())
-  email     String    @unique
-  name      String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  password  String
-  workouts  Workout[]
+  id            String        @id @default(uuid())
+  email         String        @unique
+  name          String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  password      String
+  workouts      Workout[]
+  weightEntries WeightEntry[]
+}
+
+model WeightEntry {
+  id     Int      @id @default(autoincrement())
+  userId String
+  user   User     @relation(fields: [userId], references: [id])
+  weight Float
+  date   DateTime
+
+  @@unique([userId, date])
 }
 
 model Movement {
