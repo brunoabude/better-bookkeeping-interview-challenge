@@ -47,12 +47,15 @@ services:
       dockerfile: Dockerfile
       target: development
     ports:
-      - ${PORT:-3000}:3000
+      - ${PORT:-3000}:3902
     develop:
       watch:
         - action: sync
           path: ./src
           target: /app/src
+        - action: sync
+          path: ./prisma/generated
+          target: /app/prisma/generated
         - action: rebuild
           path: package.json
         - action: rebuild

@@ -156,3 +156,8 @@ The onboarding app **does not handle Stripe webhooks**. Subscription status upda
 - Development container runs on port 3200 (maps to internal port 3000)
 - Uses user ID/group ID mapping for file permissions
 - Volume mounts ensure local development experience with Docker benefits
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
