@@ -160,5 +160,5 @@ The onboarding app **does not handle Stripe webhooks**. Subscription status upda
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/002-bodyweight-movements/plan.md`.
+at `specs/003-progression-charts/plan.md`.
 <!-- SPECKIT END -->
