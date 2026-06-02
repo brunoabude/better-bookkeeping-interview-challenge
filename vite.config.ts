@@ -15,6 +15,7 @@ const config = defineConfig({
     tanstackStart(),
     nitro({
       preset: "node-server",
+      logLevel: process.env.NODE_ENV === "production" ? 3 : 5,
     }),
     viteReact(),
   ],
