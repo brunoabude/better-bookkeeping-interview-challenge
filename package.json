@@ -29,6 +29,7 @@
     "@tanstack/react-start": "^1.139.3",
     "@tanstack/react-virtual": "^3.13.25",
     "@tanstack/router-plugin": "^1.139.3",
+    "argon2": "^0.44.0",
     "lucide-react": "^0.562.0",
     "motion": "^12.26.2",
     "nitro": "^3.0.1-alpha.1",

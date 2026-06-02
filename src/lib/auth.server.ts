@@ -3,6 +3,7 @@ import { redirect } from "@tanstack/react-router";
 import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { sessionCookieName } from "./auth.consts";
+import { hashPassword, verifyPassword } from "./password.server";
 import { getServerSidePrismaClient } from "./db.server";
 import { z } from "zod";
 
@@ -79,9 +80,10 @@ export const signInServerFn = createServerFn({ method: "POST" })
     const prisma = await getServerSidePrismaClient();
     const user = await prisma.user.findUnique({
       where: { email },
+      select: { password: true, id: true}
     });
 
-    if (!user || user.password !== password) {
+    if (!user || !(await verifyPassword(password, user.password))) {
       return { success: false as const, error: "Invalid email or password" };
     }
 
@@ -109,7 +111,7 @@ export const createAccountServerFn = createServerFn({ method: "POST" })
     }
 
     const user = await prisma.user.create({
-      data: { email, name, password },
+      data: { email, name, password: await hashPassword(password) },
     });
 
     setSessionCookie(user.id);
@@ -124,6 +126,41 @@ export const logoutServerFn = createServerFn({ method: "POST" }).handler(async (
   deleteCookie(sessionCookieName);
   return { success: true };
 });
+
+export const updatePasswordServerFn = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ currentPassword: z.string(), newPassword: z.string().min(6) }))
+  .handler(async ({ data }: { data: { currentPassword: string; newPassword: string } }) => {
+    const { currentPassword, newPassword } = data;
+
+    const sessionToken = getCookie(sessionCookieName);
+    if (!sessionToken) {
+      return { success: false as const, error: "Not authenticated" };
+    }
+
+    const userId = verifySessionToken(sessionToken);
+    if (!userId) {
+      return { success: false as const, error: "Not authenticated" };
+    }
+
+    const prisma = await getServerSidePrismaClient();
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      return { success: false as const, error: "Not authenticated" };
+    }
+
+    const passwordMatches = await verifyPassword(currentPassword, user.password);
+    if (!passwordMatches) {
+      return { success: false as const, error: "Current password is incorrect" };
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: await hashPassword(newPassword) },
+    });
+
+    return { success: true as const };
+  });
 
 /**
  * Authentication middleware that ensures user is logged in
