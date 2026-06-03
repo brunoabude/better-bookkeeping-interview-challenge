@@ -19,6 +19,30 @@ export const getMovementsServerFn = createServerFn().handler(async () => {
   });
 });
 
+const PAGE_SIZE = 10;
+
+export const getPaginatedMovementsServerFn = createServerFn()
+  .inputValidator(z.object({ page: z.number().int().min(1) }))
+  .handler(async ({ data }: { data: { page: number } }) => {
+    const prisma = await getServerSidePrismaClient();
+    const skip = (data.page - 1) * PAGE_SIZE;
+    const [totalCount, items] = await prisma.$transaction([
+      prisma.movement.count(),
+      prisma.movement.findMany({
+        orderBy: { name: "asc" },
+        take: PAGE_SIZE,
+        skip,
+      }),
+    ]);
+    return {
+      items,
+      totalCount,
+      page: data.page,
+      totalPages: Math.ceil(totalCount / PAGE_SIZE),
+      pageSize: PAGE_SIZE,
+    };
+  });
+
 export const updateMovementServerFn = createServerFn({ method: "POST" })
   .inputValidator(z.object({ id: z.string().uuid(), isBodyWeight: z.boolean() }))
   .handler(async ({ data }: { data: { id: string; isBodyWeight: boolean } }) => {

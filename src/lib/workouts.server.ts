@@ -98,7 +98,7 @@ export const deleteSetServerFn = createServerFn({ method: "POST" })
   });
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 5;
 const MAX_RANGE_DAYS = 90;
 
 export const getWorkoutHistoryServerFn = createServerFn()
