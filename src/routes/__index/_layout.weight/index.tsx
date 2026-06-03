@@ -189,7 +189,7 @@ function WeightPage() {
       {data.chartItems.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Weight Over Time</CardTitle>
+            <CardTitle>Weight Entries</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
