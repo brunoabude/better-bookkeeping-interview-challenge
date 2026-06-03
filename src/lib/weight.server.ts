@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const MAXIMUM_VALID_WEIGHT = 720; // Lbs
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 5;
 const MAX_RANGE_DAYS = 90;
 
 export const getWeightEntriesServerFn = createServerFn()
@@ -44,7 +44,7 @@ export const getWeightEntriesServerFn = createServerFn()
         date: { gte: startBound, lte: endBound },
       };
 
-      const [totalCount, entries] = await prisma.$transaction([
+      const [totalCount, entries, allEntries] = await prisma.$transaction([
         prisma.weightEntry.count({ where }),
         prisma.weightEntry.findMany({
           where,
@@ -53,10 +53,16 @@ export const getWeightEntriesServerFn = createServerFn()
           skip,
           select: { id: true, weight: true, date: true },
         }),
+        prisma.weightEntry.findMany({
+          where,
+          orderBy: { date: "asc" },
+          select: { weight: true, date: true },
+        }),
       ]);
 
       return {
         items: entries.map((e) => ({ id: e.id, weight: e.weight, date: e.date.toISOString() })),
+        chartItems: allEntries.map((e) => ({ weight: e.weight, date: e.date.toISOString() })),
         totalCount,
         page: data.page,
         totalPages: Math.ceil(totalCount / PAGE_SIZE),

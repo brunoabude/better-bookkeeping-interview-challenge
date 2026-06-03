@@ -74,7 +74,6 @@ function WeightPage() {
   }, [debouncedStart, debouncedEnd, from, to]);
 
   const { data } = useSuspenseQuery(weightEntriesQueryOptions({ startDate: from, endDate: to, page }));
-  const chartData = [...data.items].reverse();
 
   const upsertMutation = useMutation({
     mutationFn: (weight: number) =>
@@ -164,14 +163,37 @@ function WeightPage() {
         </CardContent>
       </Card>
 
-      {data.items.length > 0 && (
+      {/* Date range filter — affects both chart and history */}
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="date"
+          value={localStart}
+          onChange={(e) => setLocalStart(e.target.value)}
+          className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <span className="text-sm text-slate-500">to</span>
+        <input
+          type="date"
+          value={localEnd}
+          onChange={(e) => setLocalEnd(e.target.value)}
+          className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <Button size="sm" variant="outline" onClick={handleReset}>Reset</Button>
+        {rangeError && (
+          <span title={rangeError} data-testid="range-error-icon">
+            <AlertCircle className="w-4 h-4 text-amber-500" />
+          </span>
+        )}
+      </div>
+
+      {data.chartItems.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Weight Over Time</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
+              <LineChart data={data.chartItems}>
                 <XAxis
                   dataKey="date"
                   tickFormatter={(d) =>
@@ -197,29 +219,6 @@ function WeightPage() {
           <CardTitle>History</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Date range picker */}
-          <div className="flex flex-wrap items-center gap-3">
-            <input
-              type="date"
-              value={localStart}
-              onChange={(e) => setLocalStart(e.target.value)}
-              className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <span className="text-sm text-slate-500">to</span>
-            <input
-              type="date"
-              value={localEnd}
-              onChange={(e) => setLocalEnd(e.target.value)}
-              className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <Button size="sm" variant="outline" onClick={handleReset}>Reset</Button>
-            {rangeError && (
-              <span title={rangeError} data-testid="range-error-icon">
-                <AlertCircle className="w-4 h-4 text-amber-500" />
-              </span>
-            )}
-          </div>
-
           {data.items.length === 0 ? (
             <p className="text-sm text-slate-500">No weight entries yet. Log your first entry above.</p>
           ) : (
