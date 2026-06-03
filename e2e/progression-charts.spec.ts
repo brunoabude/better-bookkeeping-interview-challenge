@@ -3,14 +3,17 @@ import { waitForHydration, signInOrCreate } from "./shared";
 
 const PROG_PASSWORD = "password123";
 
+// Track movements created within this spec file to avoid duplicate creation across pagination pages.
+const createdMovements = new Set<string>();
+
 async function createCompletedWorkout(page: Page, movementName: string, weight: number, reps: number) {
-  await page.goto("/movements");
-  await waitForHydration(page);
-  const existing = await page.locator("li").filter({ hasText: movementName }).count();
-  if (existing === 0) {
+  if (!createdMovements.has(movementName)) {
+    await page.goto("/movements");
+    await waitForHydration(page);
     await page.getByPlaceholder("Movement name (e.g. Bench Press)").fill(movementName);
     await page.getByRole("button", { name: "Add" }).click();
     await expect(page.locator("li").filter({ hasText: movementName })).toBeVisible();
+    createdMovements.add(movementName);
   }
 
   await page.goto("/current-workout");

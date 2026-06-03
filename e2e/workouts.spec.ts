@@ -97,13 +97,13 @@ test.describe("Workouts", () => {
   });
 
   test.describe("workout history pagination", () => {
-    test("default date range is pre-filled to last 30 days", async ({ page }) => {
+    test("default date range is pre-filled to last 90 days", async ({ page }) => {
       await page.goto("/workout-history");
       await waitForHydration(page);
 
       const today = new Date();
       const startDefault = new Date();
-      startDefault.setDate(today.getDate() - 29);
+      startDefault.setDate(today.getDate() - 89);
 
       const fmt = (d: Date) => d.toLocaleDateString("en-CA"); // YYYY-MM-DD
 
@@ -149,16 +149,16 @@ test.describe("Workouts", () => {
       await waitForHydration(page);
 
       const today = new Date();
-      const thirtyOneAgo = new Date();
-      thirtyOneAgo.setDate(today.getDate() - 31);
+      const ninetyOneAgo = new Date();
+      ninetyOneAgo.setDate(today.getDate() - 91);
 
-      await page.locator('input[type="date"]').first().fill(thirtyOneAgo.toLocaleDateString("en-CA"));
+      await page.locator('input[type="date"]').first().fill(ninetyOneAgo.toLocaleDateString("en-CA"));
       await page.locator('input[type="date"]').last().fill(today.toLocaleDateString("en-CA"));
 
       // Icon should appear immediately (no debounce needed for validation display)
       await expect(page.locator('[data-testid="range-error-icon"]')).toBeVisible();
       // No text error message
-      await expect(page.getByText("Date range must not exceed 30 days")).not.toBeVisible();
+      await expect(page.getByText("Date range must not exceed 90 days")).not.toBeVisible();
     });
 
     test("applying a range where start is after end shows warning icon", async ({ page }) => {
@@ -180,12 +180,12 @@ test.describe("Workouts", () => {
       await page.goto("/workout-history");
       await waitForHydration(page);
 
-      // Set an invalid range so there's an error icon visible
+      // Set an invalid range (>90 days) so there's an error icon visible
       const today = new Date();
-      const thirtyOneAgo = new Date();
-      thirtyOneAgo.setDate(today.getDate() - 31);
+      const ninetyOneAgo = new Date();
+      ninetyOneAgo.setDate(today.getDate() - 91);
 
-      await page.locator('input[type="date"]').first().fill(thirtyOneAgo.toLocaleDateString("en-CA"));
+      await page.locator('input[type="date"]').first().fill(ninetyOneAgo.toLocaleDateString("en-CA"));
       await page.locator('input[type="date"]').last().fill(today.toLocaleDateString("en-CA"));
       await expect(page.locator('[data-testid="range-error-icon"]')).toBeVisible();
 
@@ -196,9 +196,9 @@ test.describe("Workouts", () => {
       // Error icon should be gone
       await expect(page.locator('[data-testid="range-error-icon"]')).not.toBeVisible();
 
-      // Dates should be back to defaults
+      // Dates should be back to 90-day defaults (89 days ago → today)
       const startDefault = new Date();
-      startDefault.setDate(today.getDate() - 29);
+      startDefault.setDate(today.getDate() - 89);
       const fmt = (d: Date) => d.toLocaleDateString("en-CA");
 
       await expect(page.locator('input[type="date"]').first()).toHaveValue(fmt(startDefault));

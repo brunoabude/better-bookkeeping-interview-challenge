@@ -4,7 +4,7 @@
 
 **Decision**: Offset-based pagination using Prisma's `take` / `skip` options  
 **Rationale**: Offset-based is the correct default for the access patterns here — the user browses forward/back by page number, there is no infinite scroll, and the dataset is not so large that keyset pagination is needed. Prisma's `take`/`skip` maps directly to SQL `LIMIT`/`OFFSET`.  
-**Alternatives considered**: Keyset (cursor) pagination — better for infinite scroll and very large datasets, but adds complexity (requires a stable sort key and cursor management) and is overkill for explicit prev/next navigation with page sizes of 20.
+**Alternatives considered**: Keyset (cursor) pagination — better for infinite scroll and very large datasets, but adds complexity (requires a stable sort key and cursor management) and is overkill for explicit prev/next navigation with page sizes of 5.
 
 ## Count + Data in One Round-Trip
 
@@ -24,12 +24,12 @@
 ## Date Range Validation
 
 **Decision**: Validate both client-side (immediate feedback) and server-side (security)  
-**Rationale**: Client-side validation prevents unnecessary round-trips; server-side is mandatory to prevent bypassing UI constraints. Both layers apply the same two rules: start ≤ end, range ≤ 30 calendar days. Calendar days are computed as `Math.abs(differenceInDays)` using simple date arithmetic.
+**Rationale**: Client-side validation prevents unnecessary round-trips; server-side is mandatory to prevent bypassing UI constraints. Both layers apply the same two rules: start ≤ end, range ≤ 90 calendar days. Calendar days are computed as `Math.abs(differenceInDays)` using simple date arithmetic.
 
 ## Page Size
 
-**Decision**: Fixed at 20 items per page, defined as a constant  
-**Rationale**: 20 is a well-established web pagination default. Not user-configurable in this version per spec assumptions.
+**Decision**: Fixed at 5 items per page, defined as a constant  
+**Rationale**: 5 items per page is the value chosen for this project per spec assumptions. Not user-configurable in this version.
 
 ## Query Key Design
 
@@ -74,7 +74,7 @@
 ## Virtualization Removal
 
 **Decision**: Remove `useVirtualizer` from both pages  
-**Rationale**: Virtual scrolling was a workaround for long unbounded lists loaded all at once. With server-side pagination returning at most 20 items, virtual scrolling adds complexity with no benefit. A plain list renders 20 items trivially.  
+**Rationale**: Virtual scrolling was a workaround for long unbounded lists loaded all at once. With server-side pagination returning at most 5 items, virtual scrolling adds complexity with no benefit. A plain list renders 5 items trivially.  
 **Impact**: Removes the `@tanstack/react-virtual` dependency usage from these two pages (the package itself may remain if used elsewhere, but no new import is needed).
 
 ## Shared Abstractions

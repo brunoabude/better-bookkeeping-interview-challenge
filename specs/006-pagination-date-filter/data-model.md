@@ -1,4 +1,4 @@
-# Data Model: Workout History & Weight Tracking Pagination with Date Range Filtering
+# Data Model: Workout History, Weight Tracking & Movements Pagination with Date Range Filtering
 
 ## Schema Changes
 
@@ -8,10 +8,10 @@
 
 ### Workout (existing)
 
-| Field         | Type      | Relevant Role                                |
-|---------------|-----------|----------------------------------------------|
-| `id`          | `String`  | Record identifier                            |
-| `userId`      | `String`  | Ownership filter (always applied)            |
+| Field         | Type        | Relevant Role                                |
+|---------------|-------------|----------------------------------------------|
+| `id`          | `String`    | Record identifier                            |
+| `userId`      | `String`    | Ownership filter (always applied)            |
 | `completedAt` | `DateTime?` | Date range filter target; `NOT NULL` check filters to completed workouts |
 
 ### WeightEntry (existing)
@@ -23,35 +23,55 @@
 | `weight` | `Float`    | Displayed value                        |
 | `date`   | `DateTime` | Date range filter target (stored as UTC midnight) |
 
+### Movement (existing)
+
+| Field         | Type      | Relevant Role                          |
+|---------------|-----------|----------------------------------------|
+| `id`          | `String`  | Record identifier                      |
+| `name`        | `String`  | Alphabetical sort key for pagination   |
+| `isBodyWeight`| `Boolean` | Displayed attribute                    |
+
 ## Pagination Query Parameters
+
+### Workout History & Weight Tracking
 
 Both server functions accept the same parameter shape:
 
-| Parameter   | Type     | Validation                                 | Default       |
-|-------------|----------|--------------------------------------------|---------------|
-| `startDate` | `string` | ISO date `YYYY-MM-DD`; must be ≤ `endDate` | 29 days ago   |
-| `endDate`   | `string` | ISO date `YYYY-MM-DD`; must be ≥ `startDate` | today       |
-| `page`      | `number` | Integer ≥ 1                                | `1`           |
+| Parameter   | Type     | Validation                                 | Default (both pages) |
+|-------------|----------|--------------------------------------------|----------------------|
+| `startDate` | `string` | ISO date `YYYY-MM-DD`; must be ≤ `endDate` | 89 days ago          |
+| `endDate`   | `string` | ISO date `YYYY-MM-DD`; must be ≥ `startDate` | today              |
+| `page`      | `number` | Integer ≥ 1                                | `1`                  |
 
-**Range constraint**: `endDate - startDate` must be ≤ 30 calendar days. Validated server-side with a 400-equivalent error response if violated.
+**Range constraint**: Validated server-side with a thrown error if violated.
+- **Both pages**: `endDate - startDate` must be ≤ **90** calendar days (`MAX_RANGE_DAYS = 90`)
+
+### Movements
+
+| Parameter | Type     | Validation      | Default |
+|-----------|----------|-----------------|---------|
+| `page`    | `number` | Integer ≥ 1     | `1`     |
+
+No date range parameters — movements have no time dimension.
 
 ## Paginated Response Shape
 
-Both server functions return the same envelope structure (with domain-specific `items` type):
+All three server functions return the same envelope structure (with domain-specific `items` type):
 
 ```
 {
-  items:       T[]     // page of records (max 20)
-  totalCount:  number  // total records matching the date range
+  items:       T[]     // page of records (max 5)
+  totalCount:  number  // total records matching the filter
   page:        number  // current page (1-indexed)
   totalPages:  number  // Math.ceil(totalCount / pageSize)
-  pageSize:    number  // always 20
+  pageSize:    number  // always 5
 }
 ```
 
 Where `T` is:
 - **Workout history**: `Workout & { sets: (Set & { movement: Movement })[] }`
-- **Weight entries**: `{ id: number; weight: number; date: string }`
+- **Weight entries**: `{ id: number; weight: number; date: string }`; plus `chartItems` (all entries in range, unsliced, for chart rendering
+- **Movements**: `{ id: string; name: string; isBodyWeight: boolean }`
 
 ## Query Logic
 
@@ -63,7 +83,7 @@ WHERE userId = :userId
   AND completedAt >= :startDate (midnight UTC)
   AND completedAt <= :endDate   (23:59:59.999 UTC)
 ORDER BY completedAt DESC
-LIMIT 20 OFFSET (page - 1) * 20
+LIMIT 5 OFFSET (page - 1) * 5
 ```
 
 Count query uses the same `WHERE` clause without `LIMIT`/`OFFSET`.
@@ -75,29 +95,47 @@ WHERE userId = :userId
   AND date >= :startDate (midnight UTC)
   AND date <= :endDate   (midnight UTC, since entries are stored as midnight)
 ORDER BY date DESC
-LIMIT 20 OFFSET (page - 1) * 20
+LIMIT 5 OFFSET (page - 1) * 5
 ```
 
 Count query uses the same `WHERE` clause without `LIMIT`/`OFFSET`.
 
+Chart data fetches all entries within the range (no `LIMIT`) sorted ascending, returned as `chartItems`.
+
+### Movements
+
+```
+ORDER BY name ASC
+LIMIT 5 OFFSET (page - 1) * 5
+```
+
+Count query: `SELECT COUNT(*) FROM Movement`.
+
 ## URL Search Params Shape
 
-Both route files declare the same search param schema via `validateSearch`:
+### Workout History & Weight Tracking
 
-| Param  | URL key | Type     | Default          | Example             |
-|--------|---------|----------|------------------|---------------------|
-| `page` | `page`  | `number` | `1`              | `?page=2`           |
-| `from` | `from`  | `string` | 29 days ago      | `?from=2026-05-01`  |
-| `to`   | `to`    | `string` | today            | `?to=2026-05-31`    |
+| Param  | URL key | Type     | Default      | Example             |
+|--------|---------|----------|--------------|---------------------|
+| `page` | `page`  | `number` | `1`          | `?page=2`           |
+| `from` | `from`  | `string` | 89 days ago  | `?from=2026-05-01`  |
+| `to`   | `to`    | `string` | today        | `?to=2026-05-31`    |
 
 Full example: `?page=2&from=2026-05-01&to=2026-05-31`
 
-All three params are read via `Route.useSearch()` in the component and written via `useNavigate`.
+### Movements
+
+| Param  | URL key | Type     | Default | Example   |
+|--------|---------|----------|---------|-----------|
+| `page` | `page`  | `number` | `1`     | `?page=2` |
+
+All params are read via `Route.useSearch()` in the component and written via `useNavigate`.
 
 ## Constants
 
-| Constant    | Value | Location                         |
-|-------------|-------|----------------------------------|
-| `PAGE_SIZE` | `20`  | Defined in each server file      |
-| `MAX_RANGE_DAYS` | `30` | Defined in each server file |
-| `DEFAULT_RANGE_DAYS` | `30` | Derived on client per page load |
+| Constant | Value | Location |
+|----------|-------|----------|
+| `PAGE_SIZE` | `5` | Defined in each server file (`workouts.server.ts`, `weight.server.ts`, `movements.server.ts`) |
+| `MAX_RANGE_DAYS` (Workout History) | `90` | `src/lib/workouts.server.ts` |
+| `MAX_RANGE_DAYS` (Weight Tracking) | `90` | `src/lib/weight.server.ts` |
+| `DEFAULT_RANGE_DAYS` (both date-filtered pages) | `90` (89-day offset → 90-day window) | Client: `src/routes/__index/_layout.workout-history/index.tsx` and `src/routes/__index/_layout.weight/index.tsx` |

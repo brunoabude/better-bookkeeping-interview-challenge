@@ -27,7 +27,7 @@ test.describe("Weight Tracking", () => {
     await waitForHydration(page);
     await expect(page.getByRole("link", { name: "Weight" })).toBeVisible();
     await page.getByRole("link", { name: "Weight" }).click();
-    await expect(page).toHaveURL("/weight");
+    await expect(page).toHaveURL(/\/weight/);
   });
 
   test("upsert: logging weight for same day updates existing entry", async ({ page }) => {
@@ -51,13 +51,13 @@ test.describe("Weight Tracking", () => {
   });
 
   test.describe("weight history pagination", () => {
-    test("default date range is pre-filled to last 30 days", async ({ page }) => {
+    test("default date range is pre-filled to last 90 days", async ({ page }) => {
       await page.goto("/weight");
       await waitForHydration(page);
 
       const todayDate = new Date();
       const startDefault = new Date();
-      startDefault.setDate(todayDate.getDate() - 29);
+      startDefault.setDate(todayDate.getDate() - 89);
 
       const fmt = (d: Date) => d.toLocaleDateString("en-CA");
 
@@ -95,19 +95,19 @@ test.describe("Weight Tracking", () => {
       await page.getByRole("button").filter({ has: page.locator(".lucide-trash-2") }).first().click();
     });
 
-    test("applying a range greater than 30 days shows warning icon, not error text", async ({ page }) => {
+    test("applying a range greater than 90 days shows warning icon, not error text", async ({ page }) => {
       await page.goto("/weight");
       await waitForHydration(page);
 
       const todayDate = new Date();
-      const thirtyOneAgo = new Date();
-      thirtyOneAgo.setDate(todayDate.getDate() - 31);
+      const ninetyOneAgo = new Date();
+      ninetyOneAgo.setDate(todayDate.getDate() - 91);
 
-      await page.locator('input[type="date"]').first().fill(thirtyOneAgo.toLocaleDateString("en-CA"));
+      await page.locator('input[type="date"]').first().fill(ninetyOneAgo.toLocaleDateString("en-CA"));
       await page.locator('input[type="date"]').last().fill(todayDate.toLocaleDateString("en-CA"));
 
       await expect(page.locator('[data-testid="range-error-icon"]')).toBeVisible();
-      await expect(page.getByText("Date range must not exceed 30 days")).not.toBeVisible();
+      await expect(page.getByText("Date range must not exceed 90 days")).not.toBeVisible();
     });
 
     test("chart is visible and updates when date range changes", async ({ page }) => {
@@ -144,10 +144,10 @@ test.describe("Weight Tracking", () => {
       await waitForHydration(page);
 
       const todayDate = new Date();
-      const thirtyOneAgo = new Date();
-      thirtyOneAgo.setDate(todayDate.getDate() - 31);
+      const ninetyOneAgo = new Date();
+      ninetyOneAgo.setDate(todayDate.getDate() - 91);
 
-      await page.locator('input[type="date"]').first().fill(thirtyOneAgo.toLocaleDateString("en-CA"));
+      await page.locator('input[type="date"]').first().fill(ninetyOneAgo.toLocaleDateString("en-CA"));
       await page.locator('input[type="date"]').last().fill(todayDate.toLocaleDateString("en-CA"));
       await expect(page.locator('[data-testid="range-error-icon"]')).toBeVisible();
 
@@ -156,8 +156,9 @@ test.describe("Weight Tracking", () => {
 
       await expect(page.locator('[data-testid="range-error-icon"]')).not.toBeVisible();
 
+      // Default is 89 days ago → today (90-day window)
       const startDefault = new Date();
-      startDefault.setDate(todayDate.getDate() - 29);
+      startDefault.setDate(todayDate.getDate() - 89);
       const fmt = (d: Date) => d.toLocaleDateString("en-CA");
 
       await expect(page.locator('input[type="date"]').first()).toHaveValue(fmt(startDefault));

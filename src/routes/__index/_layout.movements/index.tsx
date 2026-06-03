@@ -34,10 +34,12 @@ function MovementsPage() {
   const createMovementMutation = useMutation({
     mutationFn: (d: { name: string; isBodyWeight: boolean }) =>
       createMovementServerFn({ data: d }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["movements-paginated"] });
       setName("");
       setIsBodyWeight(false);
+      // Navigate to the page that contains the newly created movement
+      navigate({ search: { page: result.page } });
     },
   });
 

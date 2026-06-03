@@ -6,8 +6,8 @@ These TanStack Start server functions form the server/client boundary for the pa
 
 ## `getWorkoutHistoryServerFn` (modified)
 
-**File**: `src/lib/workouts.server.ts`  
-**Method**: `GET` (no-body)  
+**File**: `src/lib/workouts.server.ts`
+**Method**: `GET` (no-body)
 **Auth**: Required (authMiddleware)
 
 ### Input
@@ -28,7 +28,7 @@ These TanStack Start server functions form the server/client boundary for the pa
 | `endDate` must match `/^\d{4}-\d{2}-\d{2}$/` | Zod parse error |
 | `page` must be integer ≥ 1 | Zod parse error |
 | `startDate` ≤ `endDate` | Thrown error: "Start date must not be after end date" |
-| Range ≤ 30 calendar days | Thrown error: "Date range must not exceed 30 days" |
+| Range ≤ **90** calendar days | Thrown error: "Date range must not exceed 90 days" |
 
 ### Output (success)
 
@@ -48,7 +48,7 @@ These TanStack Start server functions form the server/client boundary for the pa
   totalCount: number
   page:       number
   totalPages: number
-  pageSize:   number  // always 20
+  pageSize:   number  // always 5
 }
 ```
 
@@ -56,8 +56,8 @@ These TanStack Start server functions form the server/client boundary for the pa
 
 ## `getWeightEntriesServerFn` (modified)
 
-**File**: `src/lib/weight.server.ts`  
-**Method**: `GET` (no-body)  
+**File**: `src/lib/weight.server.ts`
+**Method**: `GET` (no-body)
 **Auth**: Required (authMiddleware)
 
 ### Input
@@ -72,7 +72,13 @@ These TanStack Start server functions form the server/client boundary for the pa
 
 ### Validation Rules
 
-Same rules as `getWorkoutHistoryServerFn` above.
+| Rule | Error |
+|------|-------|
+| `startDate` must match `/^\d{4}-\d{2}-\d{2}$/` | Zod parse error |
+| `endDate` must match `/^\d{4}-\d{2}-\d{2}$/` | Zod parse error |
+| `page` must be integer ≥ 1 | Zod parse error |
+| `startDate` ≤ `endDate` | Thrown error: "Start date must not be after end date" |
+| Range ≤ **90** calendar days | Thrown error: "Date range must not exceed 90 days" |
 
 ### Output (success)
 
@@ -83,10 +89,52 @@ Same rules as `getWorkoutHistoryServerFn` above.
     weight: number
     date:   string  // ISO string
   }>
+  chartItems: Array<{
+    weight: number
+    date:   string  // ISO string — all entries in range, ascending, for chart rendering
+  }>
   totalCount: number
   page:       number
   totalPages: number
-  pageSize:   number  // always 20
+  pageSize:   number  // always 5
+}
+```
+
+---
+
+## `getPaginatedMovementsServerFn` (modified)
+
+**File**: `src/lib/movements.server.ts`
+**Method**: `GET` (no-body)
+**Auth**: None required
+
+### Input
+
+```typescript
+{
+  page: number  // 1-indexed; defaults to 1
+}
+```
+
+### Validation Rules
+
+| Rule | Error |
+|------|-------|
+| `page` must be integer ≥ 1 | Zod parse error |
+
+### Output (success)
+
+```typescript
+{
+  items: Array<{
+    id:           string
+    name:         string
+    isBodyWeight: boolean
+  }>
+  totalCount: number
+  page:       number
+  totalPages: number
+  pageSize:   number  // always 5
 }
 ```
 
@@ -102,6 +150,9 @@ TanStack Query keys for these functions:
 
 // Weight entries
 ["weight-entries", { startDate: string, endDate: string, page: number }]
+
+// Movements (paginated)
+["movements-paginated", { page: number }]
 ```
 
-Both keys must include all three filter parameters to ensure correct cache separation between different date ranges and pages.
+All keys include every filter parameter to ensure correct cache separation between different dates and pages.

@@ -31,7 +31,7 @@ export const getWeightEntriesServerFn = createServerFn()
       const diffDays =
         (new Date(data.endDate).getTime() - new Date(data.startDate).getTime()) / (1000 * 60 * 60 * 24);
       if (diffDays > MAX_RANGE_DAYS) {
-        throw new Error("Date range must not exceed 30 days");
+        throw new Error("Date range must not exceed 90 days");
       }
 
       const startBound = new Date(data.startDate + "T00:00:00.000Z");
