@@ -97,21 +97,66 @@ export const deleteSetServerFn = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const PAGE_SIZE = 5;
+const MAX_RANGE_DAYS = 90;
+
 export const getWorkoutHistoryServerFn = createServerFn()
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
-    const prisma = await getServerSidePrismaClient();
-    const workouts = await prisma.workout.findMany({
-      where: { userId: context.user.id, completedAt: { not: null } },
-      orderBy: { completedAt: "desc" },
-      include: {
-        sets: {
-          include: { movement: true },
-        },
-      },
-    });
-    return workouts;
-  });
+  .inputValidator(
+    z.object({
+      startDate: z.string().regex(DATE_REGEX),
+      endDate: z.string().regex(DATE_REGEX),
+      page: z.number().int().min(1),
+    }),
+  )
+  .handler(
+    async ({
+      context,
+      data,
+    }: {
+      context: { user: { id: string } };
+      data: { startDate: string; endDate: string; page: number };
+    }) => {
+      if (data.startDate > data.endDate) {
+        throw new Error("Start date must not be after end date");
+      }
+      const diffDays =
+        (new Date(data.endDate).getTime() - new Date(data.startDate).getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays > MAX_RANGE_DAYS) {
+        throw new Error("Date range must not exceed 90 days");
+      }
+
+      const startBound = new Date(data.startDate + "T00:00:00.000Z");
+      const endBound = new Date(data.endDate + "T23:59:59.999Z");
+      const skip = (data.page - 1) * PAGE_SIZE;
+
+      const prisma = await getServerSidePrismaClient();
+      const where = {
+        userId: context.user.id,
+        completedAt: { not: null as null, gte: startBound, lte: endBound },
+      };
+
+      const [totalCount, items] = await prisma.$transaction([
+        prisma.workout.count({ where }),
+        prisma.workout.findMany({
+          where,
+          orderBy: { completedAt: "desc" },
+          take: PAGE_SIZE,
+          skip,
+          include: { sets: { include: { movement: true } } },
+        }),
+      ]);
+
+      return {
+        items,
+        totalCount,
+        page: data.page,
+        totalPages: Math.ceil(totalCount / PAGE_SIZE),
+        pageSize: PAGE_SIZE,
+      };
+    },
+  );
 
 export const getMovementProgressionServerFn = createServerFn()
   .middleware([authMiddleware])

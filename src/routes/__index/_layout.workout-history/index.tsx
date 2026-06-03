@@ -1,19 +1,44 @@
-import { useState, useRef } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { deleteWorkoutsServerFn } from "@/lib/workouts.server";
-import { Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Trash2, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { movementProgressionQueryOptions } from "./-queries/movement-progression";
 import { useSuspenseQuery, useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { ProgressionChart } from "@/components/progression-chart";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useDebounce } from "@/hooks/use-debounce";
+import { Pagination } from "@/components/ui/pagination";
+
+const today = () => new Date().toLocaleDateString("en-CA");
+const defaultStartDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 89);
+  return d.toLocaleDateString("en-CA");
+};
+
+const MAX_RANGE_DAYS = 90;
+
+function validateRange(start: string, end: string): string | null {
+  if (start > end) return "Start date must not be after end date";
+  const diff = (new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24);
+  if (diff > MAX_RANGE_DAYS) return "Date range must not exceed 90 days";
+  return null;
+}
 
 export const Route = createFileRoute("/__index/_layout/workout-history/")({
-  loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(workoutHistoryQueryOptions());
+  validateSearch: (raw) => ({
+    page: Math.max(1, Number(raw.page) || 1),
+    from: typeof raw.from === "string" && raw.from ? raw.from : defaultStartDate(),
+    to: typeof raw.to === "string" && raw.to ? raw.to : today(),
+  }),
+  loaderDeps: ({ search: { page, from, to } }) => ({ page, from, to }),
+  loader: async ({ context, deps }) => {
+    await context.queryClient.ensureQueryData(
+      workoutHistoryQueryOptions({ startDate: deps.from, endDate: deps.to, page: deps.page }),
+    );
   },
   component: WorkoutHistoryPage,
 });
@@ -23,30 +48,45 @@ type Metric = "maxWeight" | "totalReps" | "totalVolume";
 const COL = "grid-cols-[2rem_1fr_5rem_8rem_2.5rem]";
 
 function WorkoutHistoryPage() {
+  const { page, from, to } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+
+  const [localStart, setLocalStart] = useState(from);
+  const [localEnd, setLocalEnd] = useState(to);
+  const debouncedStart = useDebounce(localStart, 500);
+  const debouncedEnd = useDebounce(localEnd, 500);
+
+  const rangeError = validateRange(localStart, localEnd);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const isValid = validateRange(debouncedStart, debouncedEnd) === null;
+    if (isValid && (debouncedStart !== from || debouncedEnd !== to)) {
+      navigate({
+        search: { page: 1, from: debouncedStart, to: debouncedEnd },
+        replace: true,
+      });
+    }
+  }, [debouncedStart, debouncedEnd, from, to]);
+
+  useEffect(() => {
+    listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [page]);
+
   const queryClient = useQueryClient();
-  const { data: workouts } = useSuspenseQuery(workoutHistoryQueryOptions());
+  const { data } = useSuspenseQuery(workoutHistoryQueryOptions({ startDate: from, endDate: to, page }));
 
   const [selectedWorkouts, setSelectedWorkouts] = useState<Set<string>>(new Set());
   const [expandedWorkouts, setExpandedWorkouts] = useState<Set<string>>(
-    () => new Set(workouts.length > 0 ? [workouts[0].id] : []),
+    () => new Set(data.items.length > 0 ? [data.items[0].id] : []),
   );
   const [selectedMovementId, setSelectedMovementId] = useState<string>("");
   const [selectedMetric, setSelectedMetric] = useState<Metric>("maxWeight");
 
-  const listRef = useRef<HTMLDivElement>(null);
-
-  const virtualizer = useVirtualizer({
-    count: workouts.length,
-    getScrollElement: () => listRef.current,
-    estimateSize: () => 52,
-    measureElement: (el) => el.getBoundingClientRect().height,
-    overscan: 5,
-  });
-
   const deleteWorkoutsMutation = useMutation({
     mutationFn: (workoutIds: string[]) => deleteWorkoutsServerFn({ data: { workoutIds } }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workoutHistoryQueryOptions().queryKey });
+      queryClient.invalidateQueries({ queryKey: ["workout-history"] });
       setSelectedWorkouts(new Set());
     },
   });
@@ -57,10 +97,10 @@ function WorkoutHistoryPage() {
   });
 
   const uniqueMovements = Array.from(
-    new Map(workouts.flatMap((w) => w.sets.map((s) => [s.movement.id, s.movement.name]))).entries(),
+    new Map(data.items.flatMap((w) => w.sets.map((s) => [s.movement.id, s.movement.name]))).entries(),
   ).sort((a, b) => a[1].localeCompare(b[1]));
 
-  const allSelected = workouts.length > 0 && selectedWorkouts.size === workouts.length;
+  const allSelected = data.items.length > 0 && selectedWorkouts.size === data.items.length;
 
   const toggleWorkout = (id: string) => {
     setSelectedWorkouts((prev) => {
@@ -71,7 +111,7 @@ function WorkoutHistoryPage() {
   };
 
   const toggleAll = () => {
-    setSelectedWorkouts(allSelected ? new Set() : new Set(workouts.map((w) => w.id)));
+    setSelectedWorkouts(allSelected ? new Set() : new Set(data.items.map((w) => w.id)));
   };
 
   const toggleExpand = (id: string) => {
@@ -82,16 +122,50 @@ function WorkoutHistoryPage() {
     });
   };
 
+  const handleReset = () => {
+    const newStart = defaultStartDate();
+    const newEnd = today();
+    setLocalStart(newStart);
+    setLocalEnd(newEnd);
+    navigate({ search: { page: 1, from: newStart, to: newEnd }, replace: true });
+  };
+
   const metricLabels: Record<Metric, string> = {
     maxWeight: "Max Weight",
     totalReps: "Total Reps",
     totalVolume: "Total Volume",
   };
 
+  const showingFrom = data.items.length === 0 ? 0 : (page - 1) * data.pageSize + 1;
+  const showingTo = (page - 1) * data.pageSize + data.items.length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-slate-900">Workout History</h1>
+      </div>
+
+      {/* Date range picker */}
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="date"
+          value={localStart}
+          onChange={(e) => setLocalStart(e.target.value)}
+          className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <span className="text-sm text-slate-500">to</span>
+        <input
+          type="date"
+          value={localEnd}
+          onChange={(e) => setLocalEnd(e.target.value)}
+          className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <Button size="sm" variant="outline" onClick={handleReset}>Reset</Button>
+        {rangeError && (
+          <span title={rangeError} data-testid="range-error-icon">
+            <AlertCircle className="w-4 h-4 text-amber-500" />
+          </span>
+        )}
       </div>
 
       <Card>
@@ -107,11 +181,11 @@ function WorkoutHistoryPage() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          {workouts.length === 0 ? (
-            <p className="text-sm text-slate-500 px-6 py-4">No completed workouts yet.</p>
+          {data.items.length === 0 ? (
+            <p className="text-sm text-slate-500 px-6 py-4">No completed workouts in this date range.</p>
           ) : (
             <>
-              {/* Sticky column header — outside the scroll container */}
+              {/* Sticky column header */}
               <div className={`grid ${COL} items-center border-b border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide`}>
                 <div>
                   <input
@@ -127,94 +201,101 @@ function WorkoutHistoryPage() {
                 <div />
               </div>
 
-              {/* Virtualized scrollable list */}
-              <div ref={listRef} className="overflow-y-auto max-h-[520px]">
-                <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const workout = workouts[virtualRow.index];
-                    const isExpanded = expandedWorkouts.has(workout.id);
-                    const isSelected = selectedWorkouts.has(workout.id);
-                    const totalVolume = workout.sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+              {/* Plain list */}
+              <div ref={listRef}>
+                {data.items.map((workout, idx) => {
+                  const isExpanded = expandedWorkouts.has(workout.id);
+                  const isSelected = selectedWorkouts.has(workout.id);
+                  const totalVolume = workout.sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
 
-                    return (
-                      <div
-                        key={workout.id}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        style={{ position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${virtualRow.start}px)` }}
-                        className={`border-b border-slate-100 last:border-0 ${isSelected ? "bg-primary/5" : ""}`}>
-                        {/* Summary row */}
-                        <div className={`grid ${COL} items-center px-4 py-3`}>
-                          <div>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleWorkout(workout.id)}
-                              className="rounded border-gray-300"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                          <button
-                            className="text-left text-sm text-slate-700 font-medium hover:text-slate-900"
-                            onClick={() => toggleExpand(workout.id)}>
-                            {workout.completedAt
-                              ? new Date(workout.completedAt).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })
-                              : "—"}
-                          </button>
-                          <div className="text-right text-sm text-slate-600">{workout.sets.length}</div>
-                          <div className="text-right text-sm text-slate-600">
-                            {totalVolume.toLocaleString()}
-                          </div>
-                          <button
-                            onClick={() => toggleExpand(workout.id)}
-                            className="flex items-center justify-center text-slate-400 hover:text-slate-600">
-                            {isExpanded ? (
-                              <ChevronDown className="w-4 h-4" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4" />
-                            )}
-                          </button>
+                  return (
+                    <div
+                      key={workout.id}
+                      data-index={idx}
+                      className={`border-b border-slate-100 last:border-0 ${isSelected ? "bg-primary/5" : ""}`}>
+                      {/* Summary row */}
+                      <div className={`grid ${COL} items-center px-4 py-3`}>
+                        <div>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleWorkout(workout.id)}
+                            className="rounded border-gray-300"
+                            onClick={(e) => e.stopPropagation()}
+                          />
                         </div>
-
-                        {/* Expanded sets subtree */}
-                        {isExpanded && workout.sets.length > 0 && (
-                          <div className="mx-4 mb-3 rounded-md border border-slate-200 overflow-hidden">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200">
-                                  <th className="text-left px-3 py-2 font-medium text-slate-500">Movement</th>
-                                  <th className="text-right px-3 py-2 font-medium text-slate-500">Weight (lbs)</th>
-                                  <th className="text-right px-3 py-2 font-medium text-slate-500">Reps</th>
-                                  <th className="text-right px-3 py-2 font-medium text-slate-500">Volume (lbs)</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {workout.sets.map((set, idx) => (
-                                  <tr
-                                    key={set.id}
-                                    className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
-                                    <td className="px-3 py-1.5 text-slate-700">{set.movement.name}</td>
-                                    <td className="px-3 py-1.5 text-right text-slate-600">{set.weight}</td>
-                                    <td className="px-3 py-1.5 text-right text-slate-600">{set.reps}</td>
-                                    <td className="px-3 py-1.5 text-right text-slate-600">{(set.weight * set.reps).toLocaleString()}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-
-                        {isExpanded && workout.sets.length === 0 && (
-                          <p className="px-4 pb-3 text-xs text-slate-400">No sets recorded.</p>
-                        )}
+                        <button
+                          className="text-left text-sm text-slate-700 font-medium hover:text-slate-900"
+                          onClick={() => toggleExpand(workout.id)}>
+                          {workout.completedAt
+                            ? new Date(workout.completedAt).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })
+                            : "—"}
+                        </button>
+                        <div className="text-right text-sm text-slate-600">{workout.sets.length}</div>
+                        <div className="text-right text-sm text-slate-600">
+                          {totalVolume.toLocaleString()}
+                        </div>
+                        <button
+                          onClick={() => toggleExpand(workout.id)}
+                          className="flex items-center justify-center text-slate-400 hover:text-slate-600">
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      {/* Expanded sets subtree */}
+                      {isExpanded && workout.sets.length > 0 && (
+                        <div className="mx-4 mb-3 rounded-md border border-slate-200 overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-200">
+                                <th className="text-left px-3 py-2 font-medium text-slate-500">Movement</th>
+                                <th className="text-right px-3 py-2 font-medium text-slate-500">Weight (lbs)</th>
+                                <th className="text-right px-3 py-2 font-medium text-slate-500">Reps</th>
+                                <th className="text-right px-3 py-2 font-medium text-slate-500">Volume (lbs)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {workout.sets.map((set, setIdx) => (
+                                <tr
+                                  key={set.id}
+                                  className={setIdx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
+                                  <td className="px-3 py-1.5 text-slate-700">{set.movement.name}</td>
+                                  <td className="px-3 py-1.5 text-right text-slate-600">{set.weight}</td>
+                                  <td className="px-3 py-1.5 text-right text-slate-600">{set.reps}</td>
+                                  <td className="px-3 py-1.5 text-right text-slate-600">{(set.weight * set.reps).toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {isExpanded && workout.sets.length === 0 && (
+                        <p className="px-4 pb-3 text-xs text-slate-400">No sets recorded.</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Pagination controls */}
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+                <span className="text-sm text-slate-500">
+                  Showing {showingFrom}–{showingTo} of {data.totalCount} workouts
+                </span>
+                <Pagination
+                  page={page}
+                  totalPages={data.totalPages}
+                  onPageChange={(p) => navigate({ search: (prev) => ({ ...prev, page: p }) })}
+                />
               </div>
             </>
           )}

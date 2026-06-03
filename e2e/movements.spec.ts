@@ -47,20 +47,30 @@ test.describe("Movements", () => {
       await page.goto("/movements");
       await waitForHydration(page);
 
+      // Create Zzz (sorts last) and capture its page
       await page.getByPlaceholder("Movement name (e.g. Bench Press)").fill(nameZ);
       await page.getByRole("button", { name: "Add" }).click();
       await expect(page.locator("li").filter({ hasText: nameZ })).toBeVisible();
+      const zPage = Number(new URL(page.url()).searchParams.get("page") ?? "1");
 
+      // Create Aaa (sorts first) and capture its page
       await page.getByPlaceholder("Movement name (e.g. Bench Press)").fill(nameA);
       await page.getByRole("button", { name: "Add" }).click();
       await expect(page.locator("li").filter({ hasText: nameA })).toBeVisible();
+      const aPage = Number(new URL(page.url()).searchParams.get("page") ?? "1");
 
-      const texts = await page.locator("ul li").allTextContents();
-      const aIdx = texts.findIndex((t) => t.includes(nameA));
-      const zIdx = texts.findIndex((t) => t.includes(nameZ));
-      expect(aIdx).toBeGreaterThanOrEqual(0);
-      expect(zIdx).toBeGreaterThanOrEqual(0);
-      expect(aIdx).toBeLessThan(zIdx);
+      if (aPage === zPage) {
+        // Both on same page — verify positional order within visible items
+        const texts = await page.locator("ul li").allTextContents();
+        const aIdx = texts.findIndex((t) => t.includes(nameA));
+        const zIdx = texts.findIndex((t) => t.includes(nameZ));
+        expect(aIdx).toBeGreaterThanOrEqual(0);
+        expect(zIdx).toBeGreaterThanOrEqual(0);
+        expect(aIdx).toBeLessThan(zIdx);
+      } else {
+        // On different pages — Aaa's page must be before Zzz's page
+        expect(aPage).toBeLessThan(zPage);
+      }
     });
   });
 

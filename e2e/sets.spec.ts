@@ -5,8 +5,8 @@ import { waitForHydration } from "./shared";
 const AUTH_FILE = path.join(process.cwd(), "e2e", ".auth", "user.json");
 let testMovementName: string;
 
-async function withAuthPage(browser: Browser, fn: (page: import("@playwright/test").Page) => Promise<void>) {
-  const context = await browser.newContext({ storageState: AUTH_FILE });
+async function withAuthPage(browser: Browser, baseURL: string | undefined, fn: (page: import("@playwright/test").Page) => Promise<void>) {
+  const context = await browser.newContext({ storageState: AUTH_FILE, baseURL });
   const page = await context.newPage();
   try {
     await fn(page);
@@ -15,9 +15,9 @@ async function withAuthPage(browser: Browser, fn: (page: import("@playwright/tes
   }
 }
 
-test.beforeAll(async ({ browser }) => {
-  await withAuthPage(browser, async (page) => {
-    await page.goto("http://localhost:3000/current-workout");
+test.beforeAll(async ({ browser, baseURL }) => {
+  await withAuthPage(browser, baseURL, async (page) => {
+    await page.goto("/current-workout");
     await waitForHydration(page);
 
     const completeBtn = page.getByRole("button", { name: "Complete Workout" });
@@ -30,7 +30,7 @@ test.beforeAll(async ({ browser }) => {
     await waitForHydration(page);
 
     testMovementName = `TestMovement-${Date.now()}`;
-    await page.goto("http://localhost:3000/movements");
+    await page.goto("/movements");
     await waitForHydration(page);
     await page.getByPlaceholder("Movement name (e.g. Bench Press)").fill(testMovementName);
     await page.getByRole("button", { name: "Add" }).click();
@@ -38,9 +38,9 @@ test.beforeAll(async ({ browser }) => {
   });
 });
 
-test.afterAll(async ({ browser }) => {
-  await withAuthPage(browser, async (page) => {
-    await page.goto("http://localhost:3000/current-workout");
+test.afterAll(async ({ browser, baseURL }) => {
+  await withAuthPage(browser, baseURL, async (page) => {
+    await page.goto("/current-workout");
     await waitForHydration(page);
     const completeBtn = page.getByRole("button", { name: "Complete Workout" });
     if (await completeBtn.isVisible({ timeout: 1000 }).catch(() => false)) {

@@ -4,18 +4,72 @@ import { authMiddleware } from "@/lib/auth.server";
 import { z } from "zod";
 
 const MAXIMUM_VALID_WEIGHT = 720; // Lbs
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const PAGE_SIZE = 5;
+const MAX_RANGE_DAYS = 90;
 
 export const getWeightEntriesServerFn = createServerFn()
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
-    const prisma = await getServerSidePrismaClient();
-    const entries = await prisma.weightEntry.findMany({
-      where: { userId: context.user.id },
-      orderBy: { date: "asc" },
-      select: { id: true, weight: true, date: true },
-    });
-    return entries.map((e) => ({ id: e.id, weight: e.weight, date: e.date.toISOString() }));
-  });
+  .inputValidator(
+    z.object({
+      startDate: z.string().regex(DATE_REGEX),
+      endDate: z.string().regex(DATE_REGEX),
+      page: z.number().int().min(1),
+    }),
+  )
+  .handler(
+    async ({
+      context,
+      data,
+    }: {
+      context: { user: { id: string } };
+      data: { startDate: string; endDate: string; page: number };
+    }) => {
+      if (data.startDate > data.endDate) {
+        throw new Error("Start date must not be after end date");
+      }
+      const diffDays =
+        (new Date(data.endDate).getTime() - new Date(data.startDate).getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays > MAX_RANGE_DAYS) {
+        throw new Error("Date range must not exceed 90 days");
+      }
+
+      const startBound = new Date(data.startDate + "T00:00:00.000Z");
+      const endBound = new Date(data.endDate + "T00:00:00.000Z");
+      const skip = (data.page - 1) * PAGE_SIZE;
+
+      const prisma = await getServerSidePrismaClient();
+      const where = {
+        userId: context.user.id,
+        date: { gte: startBound, lte: endBound },
+      };
+
+      const [totalCount, entries, allEntries] = await prisma.$transaction([
+        prisma.weightEntry.count({ where }),
+        prisma.weightEntry.findMany({
+          where,
+          orderBy: { date: "desc" },
+          take: PAGE_SIZE,
+          skip,
+          select: { id: true, weight: true, date: true },
+        }),
+        prisma.weightEntry.findMany({
+          where,
+          orderBy: { date: "asc" },
+          select: { weight: true, date: true },
+        }),
+      ]);
+
+      return {
+        items: entries.map((e) => ({ id: e.id, weight: e.weight, date: e.date.toISOString() })),
+        chartItems: allEntries.map((e) => ({ weight: e.weight, date: e.date.toISOString() })),
+        totalCount,
+        page: data.page,
+        totalPages: Math.ceil(totalCount / PAGE_SIZE),
+        pageSize: PAGE_SIZE,
+      };
+    },
+  );
 
 export const upsertWeightEntryServerFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
