@@ -9,6 +9,7 @@
  * each time. Movements and the user account are upserted, never duplicated.
  */
 
+import argon2 from "argon2";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../prisma/generated/client/client";
 
@@ -154,16 +155,15 @@ async function main() {
   console.log(`✓  Movements upserted: ${movementIdByName.size}`);
 
   // 2. Upsert test user
+  const hashedPassword = await argon2.hash(SEED_PASSWORD, { type: argon2.argon2id });
   let user = await prisma.user.findUnique({ where: { email: SEED_EMAIL } });
   if (!user) {
     user = await prisma.user.create({
-      data: { email: SEED_EMAIL, password: SEED_PASSWORD, name: SEED_NAME },
+      data: { email: SEED_EMAIL, password: hashedPassword, name: SEED_NAME },
     });
     console.log(`✓  Created user: ${SEED_EMAIL}`);
   } else {
-    if (user.password !== SEED_PASSWORD) {
-      await prisma.user.update({ where: { id: user.id }, data: { password: SEED_PASSWORD } });
-    }
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashedPassword } });
     console.log(`✓  Found user:   ${SEED_EMAIL}`);
   }
 
