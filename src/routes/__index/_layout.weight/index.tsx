@@ -1,9 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
-import { useRef } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Trash2, AlertCircle } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -17,42 +16,78 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { upsertWeightEntryServerFn, deleteWeightEntryServerFn } from "@/lib/weight.server";
 import { weightEntriesQueryOptions } from "./-queries/weight";
+import { useDebounce } from "@/hooks/use-debounce";
+import { Pagination } from "@/components/ui/pagination";
+
+const today = () => new Date().toLocaleDateString("en-CA");
+const defaultStartDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 89);
+  return d.toLocaleDateString("en-CA");
+};
+
+const MAX_RANGE_DAYS = 90;
+
+function validateRange(start: string, end: string): string | null {
+  if (start > end) return "Start date must not be after end date";
+  const diff = (new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24);
+  if (diff > MAX_RANGE_DAYS) return "Date range must not exceed 90 days";
+  return null;
+}
 
 export const Route = createFileRoute("/__index/_layout/weight/")({
-  loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(weightEntriesQueryOptions());
+  validateSearch: (raw) => ({
+    page: Math.max(1, Number(raw.page) || 1),
+    from: typeof raw.from === "string" && raw.from ? raw.from : defaultStartDate(),
+    to: typeof raw.to === "string" && raw.to ? raw.to : today(),
+  }),
+  loaderDeps: ({ search: { page, from, to } }) => ({ page, from, to }),
+  loader: async ({ context, deps }) => {
+    await context.queryClient.ensureQueryData(
+      weightEntriesQueryOptions({ startDate: deps.from, endDate: deps.to, page: deps.page }),
+    );
   },
   component: WeightPage,
 });
 
-const HISTORY_ITEM_HEIGHT = 41; // py-2 + border + text = ~41px
-const HISTORY_MAX_VISIBLE = 8;
-
 function WeightPage() {
   const queryClient = useQueryClient();
-  const { data: entries } = useSuspenseQuery(weightEntriesQueryOptions());
-  const listRef = useRef<HTMLDivElement>(null);
-  const reversedEntries = [...entries].reverse();
 
-  const rowVirtualizer = useVirtualizer({
-    count: reversedEntries.length,
-    getScrollElement: () => listRef.current,
-    estimateSize: () => HISTORY_ITEM_HEIGHT,
-    overscan: 5,
-  });
+  const { page, from, to } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+
+  const [localStart, setLocalStart] = useState(from);
+  const [localEnd, setLocalEnd] = useState(to);
+  const debouncedStart = useDebounce(localStart, 500);
+  const debouncedEnd = useDebounce(localEnd, 500);
+
+  const rangeError = validateRange(localStart, localEnd);
+
+  useEffect(() => {
+    const isValid = validateRange(debouncedStart, debouncedEnd) === null;
+    if (isValid && (debouncedStart !== from || debouncedEnd !== to)) {
+      navigate({
+        search: { page: 1, from: debouncedStart, to: debouncedEnd },
+        replace: true,
+      });
+    }
+  }, [debouncedStart, debouncedEnd, from, to]);
+
+  const { data } = useSuspenseQuery(weightEntriesQueryOptions({ startDate: from, endDate: to, page }));
+  const chartData = [...data.items].reverse();
 
   const upsertMutation = useMutation({
     mutationFn: (weight: number) =>
       upsertWeightEntryServerFn({ data: { weight, date: new Date().toLocaleDateString("en-CA") } }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: weightEntriesQueryOptions().queryKey });
+      queryClient.invalidateQueries({ queryKey: ["weight-entries"] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteWeightEntryServerFn({ data: { id } }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: weightEntriesQueryOptions().queryKey });
+      queryClient.invalidateQueries({ queryKey: ["weight-entries"] });
     },
   });
 
@@ -65,6 +100,17 @@ function WeightPage() {
       formApi.reset();
     },
   });
+
+  const handleReset = () => {
+    const newStart = defaultStartDate();
+    const newEnd = today();
+    setLocalStart(newStart);
+    setLocalEnd(newEnd);
+    navigate({ search: { page: 1, from: newStart, to: newEnd }, replace: true });
+  };
+
+  const showingFrom = data.items.length === 0 ? 0 : (page - 1) * data.pageSize + 1;
+  const showingTo = (page - 1) * data.pageSize + data.items.length;
 
   return (
     <div className="space-y-6">
@@ -118,14 +164,14 @@ function WeightPage() {
         </CardContent>
       </Card>
 
-      {entries.length > 0 && (
+      {data.items.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Weight Over Time</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={entries}>
+              <LineChart data={chartData}>
                 <XAxis
                   dataKey="date"
                   tickFormatter={(d) =>
@@ -150,44 +196,71 @@ function WeightPage() {
         <CardHeader>
           <CardTitle>History</CardTitle>
         </CardHeader>
-        <CardContent>
-          {entries.length === 0 ? (
+        <CardContent className="space-y-3">
+          {/* Date range picker */}
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="date"
+              value={localStart}
+              onChange={(e) => setLocalStart(e.target.value)}
+              className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <span className="text-sm text-slate-500">to</span>
+            <input
+              type="date"
+              value={localEnd}
+              onChange={(e) => setLocalEnd(e.target.value)}
+              className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <Button size="sm" variant="outline" onClick={handleReset}>Reset</Button>
+            {rangeError && (
+              <span title={rangeError} data-testid="range-error-icon">
+                <AlertCircle className="w-4 h-4 text-amber-500" />
+              </span>
+            )}
+          </div>
+
+          {data.items.length === 0 ? (
             <p className="text-sm text-slate-500">No weight entries yet. Log your first entry above.</p>
           ) : (
-            <div
-              ref={listRef}
-              style={{ height: Math.min(reversedEntries.length, HISTORY_MAX_VISIBLE) * HISTORY_ITEM_HEIGHT }}
-              className="overflow-y-auto">
-              <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
-                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                  const entry = reversedEntries[virtualRow.index];
-                  return (
-                    <div
-                      key={entry.id}
-                      style={{ position: "absolute", top: virtualRow.start, left: 0, right: 0, height: virtualRow.size }}
-                      className="flex items-center justify-between px-0.5 border-b border-slate-100 last:border-0">
-                      <span className="text-sm text-slate-600">
-                        {new Date(entry.date).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-slate-900">{entry.weight} lbs</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteMutation.mutate(entry.id)}
-                          disabled={deleteMutation.isPending}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
+            <>
+              <div>
+                {data.items.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between px-0.5 py-2 border-b border-slate-100 last:border-0">
+                    <span className="text-sm text-slate-600">
+                      {new Date(entry.date).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-slate-900">{entry.weight} lbs</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteMutation.mutate(entry.id)}
+                        disabled={deleteMutation.isPending}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
-            </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-sm text-slate-500">
+                  Showing {showingFrom}–{showingTo} of {data.totalCount} entries
+                </span>
+                <Pagination
+                  page={page}
+                  totalPages={data.totalPages}
+                  onPageChange={(p) => navigate({ search: (prev) => ({ ...prev, page: p }) })}
+                />
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

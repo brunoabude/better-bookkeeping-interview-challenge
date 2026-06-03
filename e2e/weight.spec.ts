@@ -50,6 +50,134 @@ test.describe("Weight Tracking", () => {
     await page.getByRole("button").filter({ has: page.locator(".lucide-trash-2") }).first().click();
   });
 
+  test.describe("weight history pagination", () => {
+    test("default date range is pre-filled to last 30 days", async ({ page }) => {
+      await page.goto("/weight");
+      await waitForHydration(page);
+
+      const todayDate = new Date();
+      const startDefault = new Date();
+      startDefault.setDate(todayDate.getDate() - 29);
+
+      const fmt = (d: Date) => d.toLocaleDateString("en-CA");
+
+      const startInput = page.locator('input[type="date"]').first();
+      const endInput = page.locator('input[type="date"]').last();
+
+      await expect(startInput).toHaveValue(fmt(startDefault));
+      await expect(endInput).toHaveValue(fmt(todayDate));
+    });
+
+    test("applying a valid date range resets to page 1 and shows filtered entries", async ({ page }) => {
+      await page.goto("/weight");
+      await waitForHydration(page);
+
+      // Log an entry so the history section is visible
+      await page.getByRole("spinbutton").fill("150");
+      await page.getByRole("button", { name: "Log Weight" }).click();
+      await waitForHydration(page);
+
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+      await page.locator('input[type="date"]').first().fill(twoDaysAgo.toLocaleDateString("en-CA"));
+      await page.locator('input[type="date"]').last().fill(todayStr);
+
+      // Wait for debounce + query
+      await page.waitForTimeout(600);
+      await waitForHydration(page);
+
+      await expect(page.locator('[data-testid="range-error-icon"]')).not.toBeVisible();
+      await expect(page.getByText("150 lbs")).toBeVisible();
+
+      // Cleanup
+      await page.getByRole("button").filter({ has: page.locator(".lucide-trash-2") }).first().click();
+    });
+
+    test("applying a range greater than 30 days shows warning icon, not error text", async ({ page }) => {
+      await page.goto("/weight");
+      await waitForHydration(page);
+
+      const todayDate = new Date();
+      const thirtyOneAgo = new Date();
+      thirtyOneAgo.setDate(todayDate.getDate() - 31);
+
+      await page.locator('input[type="date"]').first().fill(thirtyOneAgo.toLocaleDateString("en-CA"));
+      await page.locator('input[type="date"]').last().fill(todayDate.toLocaleDateString("en-CA"));
+
+      await expect(page.locator('[data-testid="range-error-icon"]')).toBeVisible();
+      await expect(page.getByText("Date range must not exceed 30 days")).not.toBeVisible();
+    });
+
+    test("chart is visible and updates when date range changes", async ({ page }) => {
+      await page.goto("/weight");
+      await waitForHydration(page);
+
+      // Log a weight entry so the chart is visible
+      await page.getByRole("spinbutton").fill("160");
+      await page.getByRole("button", { name: "Log Weight" }).click();
+      await waitForHydration(page);
+
+      await expect(page.locator(".recharts-responsive-container")).toBeVisible();
+
+      // Apply a date range that includes today via debounce
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+      await page.locator('input[type="date"]').first().fill(twoDaysAgo.toLocaleDateString("en-CA"));
+      await page.locator('input[type="date"]').last().fill(todayStr);
+
+      // Wait for debounce + query
+      await page.waitForTimeout(600);
+      await waitForHydration(page);
+
+      await expect(page.locator(".recharts-responsive-container")).toBeVisible();
+
+      // Cleanup
+      await page.getByRole("button").filter({ has: page.locator(".lucide-trash-2") }).first().click();
+    });
+
+    test("reset restores default date range", async ({ page }) => {
+      await page.goto("/weight");
+      await waitForHydration(page);
+
+      const todayDate = new Date();
+      const thirtyOneAgo = new Date();
+      thirtyOneAgo.setDate(todayDate.getDate() - 31);
+
+      await page.locator('input[type="date"]').first().fill(thirtyOneAgo.toLocaleDateString("en-CA"));
+      await page.locator('input[type="date"]').last().fill(todayDate.toLocaleDateString("en-CA"));
+      await expect(page.locator('[data-testid="range-error-icon"]')).toBeVisible();
+
+      await page.getByRole("button", { name: "Reset" }).click();
+      await waitForHydration(page);
+
+      await expect(page.locator('[data-testid="range-error-icon"]')).not.toBeVisible();
+
+      const startDefault = new Date();
+      startDefault.setDate(todayDate.getDate() - 29);
+      const fmt = (d: Date) => d.toLocaleDateString("en-CA");
+
+      await expect(page.locator('input[type="date"]').first()).toHaveValue(fmt(startDefault));
+      await expect(page.locator('input[type="date"]').last()).toHaveValue(fmt(todayDate));
+    });
+
+    test("URL params restore filtered view on reload", async ({ page }) => {
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      const fromStr = twoDaysAgo.toLocaleDateString("en-CA");
+
+      await page.goto(`/weight?from=${fromStr}&to=${todayStr}&page=1`);
+      await waitForHydration(page);
+
+      await expect(page.locator('input[type="date"]').first()).toHaveValue(fromStr);
+      await expect(page.locator('input[type="date"]').last()).toHaveValue(todayStr);
+    });
+  });
+
   test("validation: rejects invalid weight values", async ({ page }) => {
     await page.goto("/weight");
     await waitForHydration(page);
